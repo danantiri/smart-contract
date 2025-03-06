@@ -128,7 +128,7 @@ contract Danantiri {
      * @notice Ensures that only the admin can call the function.
      */
     modifier onlyAdmin() {
-        require(isAdmin(msg.sender), "Only admin can call this function");
+        require(msg.sender == owner, "Only admin can call this function");
         _;
     }
     
@@ -158,15 +158,6 @@ contract Danantiri {
     // --------------------------------------------------
     // Public / External Functions
     // --------------------------------------------------
-    
-    /**
-     * @notice Checks if an address is the admin.
-     * @param _addr The address to check.
-     * @return True if the address is the admin.
-     */
-    function isAdmin(address _addr) public view returns (bool) {
-        return _addr == owner;
-    }
     
     /**
      * @notice Creates a new funding program.
