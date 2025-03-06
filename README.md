@@ -6,13 +6,13 @@ Danantiri is a **blockchain-based** smart contract system designed to **track an
 
 ## Features
 
-- 📌 **Create & manage funding programs** with specific goals and descriptions.  
-- ✏️ **Update program details** including name, target amount, description, and PIC.  
-- 💰 **Fund allocation** for active programs.  
-- 💸 **Send funds** with IDRX tokens.  
-- 🔄 **Withdraw funds** securely by designated PIC.  
-- 📜 **Retrieve program status** (Active, Completed, or Inactive).  
-- 🔍 **Transparent blockchain record-keeping** for public verification.  
+- 📌 **`Create & manage funding programs`** with specific goals and descriptions.  
+- ✏️ **`Update program details`** including name, target amount, description, and PIC.  
+- 💰 **`Fund allocation`** for active programs.  
+- 💸 **`Send funds`** with IDRX tokens.  
+- 🔄 **`Withdraw funds`** securely by designated PIC.  
+- 📜 **`Retrieve program status`** (Active, Completed, or Inactive).  
+- 🔍 **`Transparent blockchain record-keeping`** for public verification.  
 
 ---
 
@@ -50,11 +50,11 @@ contract Danantiri {
 
 Programs are structured to ensure clear tracking with:
 
-- **Name & Description** 🏷️ – Provides transparency on program objectives.
-- **Target Funding Amount** 💲 – Defines the financial goal of the program.
-- **Assigned PIC** 👤 – Assign responsible individual for the program.
-- **Status (Inactive, Active, Completed)** 📡 – Tracks progress and ensures visibility.
-- **Allocated Funds** 💰 – Displays the amount of funds committed to the program.
+- **`Name & Description`** 🏷️ – Provides transparency on program objectives.
+- **`Target Funding Amount`** 💲 – Defines the financial goal of the program.
+- **`Assigned PIC`** 👤 – Assign responsible individual for the program.
+- **`Status (Inactive, Active, Completed)`** 📡 – Tracks progress and ensures visibility.
+- **`Allocated Funds`** 💰 – Displays the amount of funds committed to the program.
 
 ### 📜 Danantiri Contract State Variables
 
@@ -66,6 +66,10 @@ Program[] public programs;
 uint256 public totalAllocated;
 IERC20 public idrxToken;
 ```
+- **`owner`** 🏛️ – The administrator who has the authority to create and manage programs.
+- **`programs`** 📋 – A list of all registered funding programs stored on-chain.
+- **`totalAllocated`** 💰 – Tracks the total amount of IDRX tokens that have been distributed to programs.
+- **`idrxToken`** 🔗 – The ERC20 token contract used for all transactions within Danantiri.
 
 ### 📜 Events
 
