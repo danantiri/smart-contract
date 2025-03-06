@@ -177,9 +177,9 @@ contract Danantiri {
      * @param _pic The PIC's address (must not be the zero address).
      */
     function createProgram(
-        string memory _name,
+        string calldata _name,
         uint256 _target,
-        string memory _desc,
+        string calldata _desc,
         address _pic
     )
         public
@@ -260,9 +260,9 @@ contract Danantiri {
      */
     function updateProgram(
         uint256 _programId,
-        string memory _name,
+        string calldata _name,
         uint256 _target,
-        string memory _desc,
+        string calldata _desc,
         address _pic
     )
         public
