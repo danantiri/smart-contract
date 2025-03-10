@@ -4,6 +4,8 @@
 
 Danantiri is a **blockchain-based** smart contract system designed to **track and manage government funds** with full **transparency and accountability**. Built using **Solidity**, Danantiri utilizes IDRX tokens as the primary payment method.
 
+Danantiri ensures that **all fund transactions are recorded on-chain**, making the system **immutable and verifiable**. Every allocation and withdrawal is **publicly auditable**, preventing misuse and fraud.
+
 ## Features
 
 - 📌 **`Create & manage funding programs`** with specific goals and descriptions.  
@@ -290,9 +292,216 @@ function getCompletedProgram() public view returns (Program[] memory) {
 ```
 Returns **all fully funded programs**.
 
----
+### 📜 Final Version of The Smart Contract
 
-## 🔎 Transparency & Accountability
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-Danantiri ensures that **all fund transactions are recorded on-chain**, making the system **immutable and verifiable**. Every allocation and withdrawal is **publicly auditable**, preventing misuse and fraud.
+/**
+ * @title Danantiri
+ * @notice A contract for managing funding programs using IDRX tokens (ERC20).
+ */
 
+/**
+ * @notice Interface for interacting with an ERC20 token.
+ */
+interface IERC20 {
+    /**
+     * @notice Transfers tokens from one address to another.
+     * @param sender The address sending the tokens.
+     * @param recipient The address receiving the tokens.
+     * @param amount The number of tokens to transfer.
+     * @return A boolean value indicating whether the operation succeeded.
+     */
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    
+    /**
+     * @notice Transfers tokens to a recipient.
+     * @param recipient The address receiving the tokens.
+     * @param amount The number of tokens to transfer.
+     * @return A boolean value indicating whether the operation succeeded.
+     */
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    
+    /**
+     * @notice Gets the balance of tokens for an account.
+     * @param account The address to query.
+     * @return The token balance of the account.
+     */
+    function balanceOf(address account) external view returns (uint256);
+}
+
+contract Danantiri {
+    enum ProgramStatus { Inactive, Active, Completed }
+    
+    struct Program {
+        uint256 id; 
+        string name;
+        uint256 target;
+        string desc;
+        address pic;
+        ProgramStatus status;
+        uint256 allocated;
+    }
+    address public owner;
+    Program[] public programs;
+    uint256 public totalAllocated;
+    IERC20 public idrxToken;
+
+    event CreatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
+    event UpdatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
+    event SendFund(address indexed sender, uint256 amount);
+    event AllocateFund(uint256 indexed programId, uint256 amount);
+    event WithdrawFund(uint256 indexed programId, address indexed pic, uint256 amount);
+    
+    modifier onlyAdmin() {
+        require(msg.sender == owner, "Only admin can call this function");
+        _;
+    }
+
+    modifier onlyPIC(uint256 _programId) {
+        require(msg.sender == programs[_programId].pic, "Not PIC of this program");
+        _;
+    }
+
+    constructor(address _tokenAddress) {
+        require(_tokenAddress != address(0), "Invalid token address");
+        owner = msg.sender;
+        idrxToken = IERC20(_tokenAddress);
+    }
+    
+    function createProgram(
+        string calldata _name,
+        uint256 _target,
+        string calldata _desc,
+        address _pic
+    )
+        public
+        onlyAdmin
+    {
+        require(bytes(_name).length > 0, "Program name cannot be empty");
+        require(_target > 0, "Target must be greater than zero");
+        require(bytes(_desc).length > 0, "Description cannot be empty");
+        require(_pic != address(0), "PIC address cannot be zero");
+
+        uint256 newId = programs.length;
+        Program memory newProgram = Program({
+            id: newId,
+            name: _name,
+            target: _target,
+            desc: _desc,
+            pic: _pic,
+            status: ProgramStatus.Active,
+            allocated: 0
+        });
+
+        programs.push(newProgram);
+        emit CreatedProgram(newId, _name, _target, _pic);
+    }
+    
+    function getActiveProgram() public view returns (Program[] memory) {
+        uint256 count;
+        for (uint256 i = 0; i < programs.length; i++) {
+            if (programs[i].status == ProgramStatus.Active) {
+                count++;
+            }
+        }
+        Program[] memory activePrograms = new Program[](count);
+        uint256 index;
+        for (uint256 i = 0; i < programs.length; i++) {
+            if (programs[i].status == ProgramStatus.Active) {
+                activePrograms[index] = programs[i];
+                index++;
+            }
+        }
+        return activePrograms;
+    }
+
+    function getCompletedProgram() public view returns (Program[] memory) {
+        uint256 count;
+        for (uint256 i = 0; i < programs.length; i++) {
+            if (programs[i].status == ProgramStatus.Completed) {
+                count++;
+            }
+        }
+        Program[] memory completedPrograms = new Program[](count);
+        uint256 index;
+        for (uint256 i = 0; i < programs.length; i++) {
+            if (programs[i].status == ProgramStatus.Completed) {
+                completedPrograms[index] = programs[i];
+                index++;
+            }
+        }
+        return completedPrograms;
+    }
+    
+    function updateProgram(
+        uint256 _programId,
+        string calldata _name,
+        uint256 _target,
+        string calldata _desc,
+        address _pic
+    )
+        public
+        onlyAdmin
+    {
+        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
+        require(bytes(_name).length > 0, "Program name cannot be empty");
+        require(_target > 0, "Target must be greater than zero");
+        require(bytes(_desc).length > 0, "Description cannot be empty");
+        require(_pic != address(0), "PIC address cannot be zero");
+
+        Program storage program = programs[_programId];
+        program.name = _name;
+        program.target = _target;
+        program.desc = _desc;
+        program.pic = _pic;
+
+        emit UpdatedProgram(_programId, _name, _target, _pic);
+    }
+
+    function sendFund(uint256 amount) public {
+        require(amount > 0, "Amount must be greater than zero");
+        require(idrxToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+
+        emit SendFund(msg.sender, amount);
+    }
+    
+    function allocateFund(uint256 amount, uint256 _programId) public onlyAdmin {
+        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
+        require(amount > 0, "Allocation amount must be greater than 0");
+
+        // Calculate available tokens (contract balance minus tokens already allocated)
+        uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
+        require(available >= amount, "Not enough available tokens in contract");
+
+        Program storage program = programs[_programId];
+        require(program.allocated + amount > program.target, "Allocation exceeds program target");
+
+        program.allocated += amount;
+        totalAllocated += amount;
+
+        // Update program status based on the new allocation
+        if (program.allocated == program.target) {
+            program.status = ProgramStatus.Completed;
+        }
+
+        emit AllocateFund(_programId, amount);
+    }
+    
+    function withdrawFund(uint256 _programId) public onlyPIC(_programId) {
+        Program storage program = programs[_programId];
+        uint256 amount = program.allocated;
+        require(amount > 0, "No allocated fund to withdraw");
+
+        // Reset allocated amount and update the total allocated tokens
+        program.allocated = 0;
+        totalAllocated -= amount;
+
+        require(idrxToken.transfer(msg.sender, amount), "Token transfer failed");
+
+        emit WithdrawFund(_programId, msg.sender, amount);
+    }
+}
+```
