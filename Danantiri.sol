@@ -58,6 +58,7 @@ contract Danantiri {
         address pic;          ///< Person In Charge (PIC)
         ProgramStatus status; ///< Current funding status
         uint256 allocated;    ///< Tokens allocated to the program
+        string[] histories;   ///< History of the program
     }
     
     // --------------------------------------------------
@@ -119,6 +120,13 @@ contract Danantiri {
      * @param amount The amount of tokens withdrawn.
      */
     event WithdrawFund(uint256 indexed programId, address indexed pic, uint256 amount);
+
+    /**
+     * @notice Emitted when a history is added to a program.
+     * @param programId The ID of the program.
+     * @param history The history to add.
+     */
+    event AddHistory(uint256 indexed programId, string history);
     
     // --------------------------------------------------
     // Modifiers
@@ -331,5 +339,16 @@ contract Danantiri {
         require(idrxToken.transfer(msg.sender, amount), "Token transfer failed");
 
         emit WithdrawFund(_programId, msg.sender, amount);
+    }
+
+    /**
+     * @notice Adds a history for a program.
+     * @param _programId The ID of the program.
+     * @param _history The history to add.
+     */
+    function addHistory(uint256 _programId, string calldata _history) public onlyAdmin {
+        programs[_programId].histories.push(_history);
+
+        emit AddHistory(_programId, _history);
     }
 }

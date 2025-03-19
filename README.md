@@ -46,6 +46,7 @@ contract Danantiri {
         address pic;
         ProgramStatus status;
         uint256 allocated;
+        string[] histories;
     }
 }
 ```
@@ -81,6 +82,7 @@ event UpdatedProgram(uint256 indexed programId, string name, uint256 target, add
 event SendFund(address indexed sender, uint256 amount);
 event AllocateFund(uint256 indexed programId, uint256 amount);
 event WithdrawFund(uint256 indexed programId, address indexed pic, uint256 amount);
+event AddHistory(uint256 indexed programId, string history);
 ```
 Events will be used to communicate with external application
 
@@ -244,9 +246,23 @@ function withdrawFund(uint256 _programId) public onlyPIC(_programId) {
 }
 ```
 
+PIC can add historical data to record fund usage.
+
+#### 6️⃣ Add Historical Event (For PICs)
+
+The best practice way actually to use emitted event only. However since we need to access this data much easier, we save the data on the smart contract.
+
+```solidity
+function addHistory(uint256 _programId, string calldata _history) public onlyAdmin {
+    programs[_programId].histories.push(_history);
+
+    emit AddHistory(_programId, _history);
+}
+```
+
 Allows **designated PICs** to withdraw **allocated funds**.
 
-#### 6️⃣ Retrieving Program Data
+#### 7️⃣ Retrieving Program Data
 
 To ensure transparency in fund usage, we will implement functions that allow the public to access and view all active and completed programs.
 
@@ -315,6 +331,7 @@ contract Danantiri {
         address pic;
         ProgramStatus status;
         uint256 allocated;
+        string[] histories;
     }
     address public owner;
     Program[] public programs;
@@ -474,6 +491,12 @@ contract Danantiri {
         require(idrxToken.transfer(msg.sender, amount), "Token transfer failed");
 
         emit WithdrawFund(_programId, msg.sender, amount);
+    }
+
+    function addHistory(uint256 _programId, string calldata _history) public onlyAdmin {
+        programs[_programId].histories.push(_history);
+
+        emit AddHistory(_programId, _history);
     }
 }
 ```
