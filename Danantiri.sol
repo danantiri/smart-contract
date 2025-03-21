@@ -58,7 +58,18 @@ contract Danantiri {
         address pic;          ///< Person In Charge (PIC)
         ProgramStatus status; ///< Current funding status
         uint256 allocated;    ///< Tokens allocated to the program
-        string[] histories;   ///< History of the program
+    }
+
+    /**
+     * @notice Represents a history entry for a program.
+     * @param timestamp The timestamp of the history entry.
+     * @param history The history message.
+     * @param amount The amount of tokens involved in the history entry.
+     */
+    struct History {
+        uint256 timestamp;
+        string history;
+        uint256 amount;
     }
     
     // --------------------------------------------------
@@ -76,6 +87,9 @@ contract Danantiri {
     
     /// @notice The ERC20 token used for funding (IDRX).
     IERC20 public idrxToken;
+
+    /// @notice Mapping of program IDs to their history.
+    mapping(uint256 => History[]) public programHistories;
     
     // --------------------------------------------------
     // Events
@@ -117,16 +131,10 @@ contract Danantiri {
      * @notice Emitted when the PIC withdraws allocated tokens.
      * @param programId The ID of the program.
      * @param pic The address of the PIC.
+     * @param history The history of the withdrawal.
      * @param amount The amount of tokens withdrawn.
      */
-    event WithdrawFund(uint256 indexed programId, address indexed pic, uint256 amount);
-
-    /**
-     * @notice Emitted when a history is added to a program.
-     * @param programId The ID of the program.
-     * @param history The history to add.
-     */
-    event AddHistory(uint256 indexed programId, string history);
+    event WithdrawFund(uint256 indexed programId, address indexed pic, string history, uint256 amount);
     
     // --------------------------------------------------
     // Modifiers
@@ -296,59 +304,60 @@ contract Danantiri {
     
     /**
      * @notice Allocates tokens from the contract to a specific program.
-     * @dev Checks that allocation does not exceed the program's target or available tokens.
-     * @param amount The amount of tokens to allocate.
+     * @dev Checks that allocation does not exceed the program's target or available tokens. (allocation = target)
      * @param _programId The ID of the program.
      */
-    function allocateFund(uint256 amount, uint256 _programId) public onlyAdmin {
-        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
-        require(amount > 0, "Allocation amount must be greater than 0");
+    function allocateFund(uint256 _programId) public onlyAdmin {
+        Program storage program = programs[_programId];
+        require(program.status == ProgramStatus.Active, "Program is not active");
 
         // Calculate available tokens (contract balance minus tokens already allocated)
         uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
-        require(available >= amount, "Not enough available tokens in contract");
+        require(available == program.target, "Allocation must be equal to program target");
 
-        Program storage program = programs[_programId];
-        require(program.allocated + amount > program.target, "Allocation exceeds program target");
+        program.allocated += program.target;
+        totalAllocated += program.target;
+        program.status = ProgramStatus.Completed;
 
-        program.allocated += amount;
-        totalAllocated += amount;
-
-        // Update program status based on the new allocation
-        if (program.allocated == program.target) {
-            program.status = ProgramStatus.Completed;
-        }
-
-        emit AllocateFund(_programId, amount);
+        emit AllocateFund(_programId, program.target);
     }
     
     /**
      * @notice Allows the PIC of a program to withdraw the allocated tokens.
      * @dev Withdraws the entire allocated amount and resets it to zero.
      * @param _programId The ID of the program.
+     * @param _history The history of the withdrawal.
+     * @param _amount The amount of tokens to withdraw.
      */
-    function withdrawFund(uint256 _programId) public onlyPIC(_programId) {
+    function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) public onlyPIC(_programId) {
         Program storage program = programs[_programId];
-        uint256 amount = program.allocated;
-        require(amount > 0, "No allocated fund to withdraw");
+        require(program.status == ProgramStatus.Completed, "Program is not completed");
+        require(bytes(_history).length > 0, "History cannot be empty");
+        require(_amount > 0, "Amount must be greater than zero");
+        require(_amount <= program.allocated, "Amount to withdraw exceeds allocated fund");
 
-        // Reset allocated amount and update the total allocated tokens
-        program.allocated = 0;
-        totalAllocated -= amount;
+        // Update allocated amount and total allocated tokens
+        program.allocated -= _amount;
+        totalAllocated -= _amount;
 
-        require(idrxToken.transfer(msg.sender, amount), "Token transfer failed");
+        // Add history
+        programHistories[_programId].push(History({
+            timestamp: block.timestamp,
+            history: _history,
+            amount: _amount
+        }));
 
-        emit WithdrawFund(_programId, msg.sender, amount);
+        require(idrxToken.transfer(msg.sender, _amount), "Token transfer failed");
+
+        emit WithdrawFund(_programId, msg.sender, _history, _amount);
     }
 
     /**
-     * @notice Adds a history for a program.
+     * @notice Retrieves the history of a specific program.
      * @param _programId The ID of the program.
-     * @param _history The history to add.
+     * @return An array of history entries.
      */
-    function addHistory(uint256 _programId, string calldata _history) public onlyAdmin {
-        programs[_programId].histories.push(_history);
-
-        emit AddHistory(_programId, _history);
+    function getProgramHistory(uint256 _programId) public view returns (History[] memory) {
+        return programHistories[_programId];
     }
 }

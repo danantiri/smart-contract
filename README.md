@@ -48,6 +48,12 @@ contract Danantiri {
         uint256 allocated;
         string[] histories;
     }
+
+    struct History {
+        uint256 timestamp;
+        string history;
+        uint256 amount;
+    }
 }
 ```
 
@@ -68,6 +74,7 @@ address public owner;
 Program[] public programs;
 uint256 public totalAllocated;
 IERC20 public idrxToken;
+mapping(uint256 => History[]) public programHistories;
 ```
 - **`owner`** 🏛️ – The administrator who has the authority to create and manage programs.
 - **`programs`** 📋 – A list of all registered funding programs stored on-chain.
@@ -81,8 +88,7 @@ event CreatedProgram(uint256 indexed programId, string name, uint256 target, add
 event UpdatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
 event SendFund(address indexed sender, uint256 amount);
 event AllocateFund(uint256 indexed programId, uint256 amount);
-event WithdrawFund(uint256 indexed programId, address indexed pic, uint256 amount);
-event AddHistory(uint256 indexed programId, string history);
+event WithdrawFund(uint256 indexed programId, address indexed pic, string history, uint256 amount);
 ```
 Events will be used to communicate with external application
 
@@ -160,29 +166,29 @@ Admins can create programs that will be funded using the funds in Danantiri. All
 
 ```solidity
 function updateProgram(
-        uint256 _programId,
-        string calldata _name,
-        uint256 _target,
-        string calldata _desc,
-        address _pic
-    )
-        public
-        onlyAdmin
-    {
-        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
-        require(bytes(_name).length > 0, "Program name cannot be empty");
-        require(_target > 0, "Target must be greater than zero");
-        require(bytes(_desc).length > 0, "Description cannot be empty");
-        require(_pic != address(0), "PIC address cannot be zero");
+    uint256 _programId,
+    string calldata _name,
+    uint256 _target,
+    string calldata _desc,
+    address _pic
+)
+    public
+    onlyAdmin
+{
+    require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
+    require(bytes(_name).length > 0, "Program name cannot be empty");
+    require(_target > 0, "Target must be greater than zero");
+    require(bytes(_desc).length > 0, "Description cannot be empty");
+    require(_pic != address(0), "PIC address cannot be zero");
 
-        Program storage program = programs[_programId];
-        program.name = _name;
-        program.target = _target;
-        program.desc = _desc;
-        program.pic = _pic;
+    Program storage program = programs[_programId];
+    program.name = _name;
+    program.target = _target;
+    program.desc = _desc;
+    program.pic = _pic;
 
-        emit UpdatedProgram(_programId, _name, _target, _pic);
-    }
+    emit UpdatedProgram(_programId, _name, _target, _pic);
+}
 ```
 
 If the program's information or financial goal is no longer valid, admins can update the program’s name, description, target amount, and assigned PIC.
@@ -203,26 +209,19 @@ Allows users to **contribute IDRX tokens** to the contract.
 #### 4️⃣ Allocating Funds to a Program
 
 ```solidity
-function allocateFund(uint256 amount, uint256 _programId) public onlyAdmin {
-    require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
-    require(amount > 0, "Allocation amount must be greater than 0");
+function allocateFund(uint256 _programId) public onlyAdmin {
+    Program storage program = programs[_programId];
+    require(program.status == ProgramStatus.Active, "Program is not active");
 
     // Calculate available tokens (contract balance minus tokens already allocated)
     uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
-    require(available >= amount, "Not enough available tokens in contract");
+    require(available == program.target, "Allocation must be equal to program target");
 
-    Program storage program = programs[_programId];
-    require(program.allocated + amount > program.target, "Allocation exceeds program target");
+    program.allocated += program.target;
+    totalAllocated += program.target;
+    program.status = ProgramStatus.Completed;
 
-    program.allocated += amount;
-    totalAllocated += amount;
-
-    // Update program status based on the new allocation
-    if (program.allocated == program.target) {
-        program.status = ProgramStatus.Completed;
-    }
-
-    emit AllocateFund(_programId, amount);
+    emit AllocateFund(_programId, program.target);
 }
 ```
 
@@ -231,38 +230,32 @@ Admin can transfer funds **from contract balance** to a **specific program** whi
 #### 5️⃣ Withdrawing Funds (For PICs)
 
 ```solidity
-function withdrawFund(uint256 _programId) public onlyPIC(_programId) {
+function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) public onlyPIC(_programId) {
     Program storage program = programs[_programId];
-    uint256 amount = program.allocated;
-    require(amount > 0, "No allocated fund to withdraw");
+    require(program.status == ProgramStatus.Completed, "Program is not completed");
+    require(bytes(_history).length > 0, "History cannot be empty");
+    require(_amount > 0, "Amount must be greater than zero");
+    require(_amount <= program.allocated, "Amount to withdraw exceeds allocated fund");
 
-    // Reset allocated amount and update the total allocated tokens
-    program.allocated = 0;
-    totalAllocated -= amount;
+    // Update allocated amount and total allocated tokens
+    program.allocated -= _amount;
+    totalAllocated -= _amount;
 
-    require(idrxToken.transfer(msg.sender, amount), "Token transfer failed");
+    // Add history
+    programHistories[_programId].push(History({
+        timestamp: block.timestamp,
+        history: _history,
+        amount: _amount
+    }));
 
-    emit WithdrawFund(_programId, msg.sender, amount);
+    require(idrxToken.transfer(msg.sender, _amount), "Token transfer failed");
+
+    emit WithdrawFund(_programId, msg.sender, _history, _amount);
 }
-```
-
-PIC can add historical data to record fund usage.
-
-#### 6️⃣ Add Historical Event (For PICs)
-
-The best practice way actually to use emitted event only. However since we need to access this data much easier, we save the data on the smart contract.
-
-```solidity
-function addHistory(uint256 _programId, string calldata _history) public onlyAdmin {
-    programs[_programId].histories.push(_history);
-
-    emit AddHistory(_programId, _history);
-}
-```
 
 Allows **designated PICs** to withdraw **allocated funds**.
 
-#### 7️⃣ Retrieving Program Data
+#### 6️⃣ Retrieving Program Data
 
 To ensure transparency in fund usage, we will implement functions that allow the public to access and view all active and completed programs.
 
@@ -308,195 +301,9 @@ function getCompletedProgram() public view returns (Program[] memory) {
 ```
 Returns **all fully funded programs**.
 
-### 📜 Final Version of The Smart Contract
-
 ```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
-
-interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
-
-contract Danantiri {
-    enum ProgramStatus { Inactive, Active, Completed }
-    
-    struct Program {
-        uint256 id; 
-        string name;
-        uint256 target;
-        string desc;
-        address pic;
-        ProgramStatus status;
-        uint256 allocated;
-        string[] histories;
-    }
-    address public owner;
-    Program[] public programs;
-    uint256 public totalAllocated;
-    IERC20 public idrxToken;
-
-    event CreatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
-    event UpdatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
-    event SendFund(address indexed sender, uint256 amount);
-    event AllocateFund(uint256 indexed programId, uint256 amount);
-    event WithdrawFund(uint256 indexed programId, address indexed pic, uint256 amount);
-    
-    modifier onlyAdmin() {
-        require(msg.sender == owner, "Only admin can call this function");
-        _;
-    }
-
-    modifier onlyPIC(uint256 _programId) {
-        require(msg.sender == programs[_programId].pic, "Not PIC of this program");
-        _;
-    }
-
-    constructor(address _tokenAddress) {
-        require(_tokenAddress != address(0), "Invalid token address");
-        owner = msg.sender;
-        idrxToken = IERC20(_tokenAddress);
-    }
-    
-    function createProgram(
-        string calldata _name,
-        uint256 _target,
-        string calldata _desc,
-        address _pic
-    )
-        public
-        onlyAdmin
-    {
-        require(bytes(_name).length > 0, "Program name cannot be empty");
-        require(_target > 0, "Target must be greater than zero");
-        require(bytes(_desc).length > 0, "Description cannot be empty");
-        require(_pic != address(0), "PIC address cannot be zero");
-
-        uint256 newId = programs.length;
-        Program memory newProgram = Program({
-            id: newId,
-            name: _name,
-            target: _target,
-            desc: _desc,
-            pic: _pic,
-            status: ProgramStatus.Active,
-            allocated: 0
-        });
-
-        programs.push(newProgram);
-        emit CreatedProgram(newId, _name, _target, _pic);
-    }
-    
-    function getActiveProgram() public view returns (Program[] memory) {
-        uint256 count;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Active) {
-                count++;
-            }
-        }
-        Program[] memory activePrograms = new Program[](count);
-        uint256 index;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Active) {
-                activePrograms[index] = programs[i];
-                index++;
-            }
-        }
-        return activePrograms;
-    }
-
-    function getCompletedProgram() public view returns (Program[] memory) {
-        uint256 count;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Completed) {
-                count++;
-            }
-        }
-        Program[] memory completedPrograms = new Program[](count);
-        uint256 index;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Completed) {
-                completedPrograms[index] = programs[i];
-                index++;
-            }
-        }
-        return completedPrograms;
-    }
-    
-    function updateProgram(
-        uint256 _programId,
-        string calldata _name,
-        uint256 _target,
-        string calldata _desc,
-        address _pic
-    )
-        public
-        onlyAdmin
-    {
-        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
-        require(bytes(_name).length > 0, "Program name cannot be empty");
-        require(_target > 0, "Target must be greater than zero");
-        require(bytes(_desc).length > 0, "Description cannot be empty");
-        require(_pic != address(0), "PIC address cannot be zero");
-
-        Program storage program = programs[_programId];
-        program.name = _name;
-        program.target = _target;
-        program.desc = _desc;
-        program.pic = _pic;
-
-        emit UpdatedProgram(_programId, _name, _target, _pic);
-    }
-
-    function sendFund(uint256 amount) public {
-        require(amount > 0, "Amount must be greater than zero");
-        require(idrxToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
-
-        emit SendFund(msg.sender, amount);
-    }
-    
-    function allocateFund(uint256 amount, uint256 _programId) public onlyAdmin {
-        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
-        require(amount > 0, "Allocation amount must be greater than 0");
-
-        // Calculate available tokens (contract balance minus tokens already allocated)
-        uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
-        require(available >= amount, "Not enough available tokens in contract");
-
-        Program storage program = programs[_programId];
-        require(program.allocated + amount > program.target, "Allocation exceeds program target");
-
-        program.allocated += amount;
-        totalAllocated += amount;
-
-        // Update program status based on the new allocation
-        if (program.allocated == program.target) {
-            program.status = ProgramStatus.Completed;
-        }
-
-        emit AllocateFund(_programId, amount);
-    }
-    
-    function withdrawFund(uint256 _programId) public onlyPIC(_programId) {
-        Program storage program = programs[_programId];
-        uint256 amount = program.allocated;
-        require(amount > 0, "No allocated fund to withdraw");
-
-        // Reset allocated amount and update the total allocated tokens
-        program.allocated = 0;
-        totalAllocated -= amount;
-
-        require(idrxToken.transfer(msg.sender, amount), "Token transfer failed");
-
-        emit WithdrawFund(_programId, msg.sender, amount);
-    }
-
-    function addHistory(uint256 _programId, string calldata _history) public onlyAdmin {
-        programs[_programId].histories.push(_history);
-
-        emit AddHistory(_programId, _history);
-    }
+function getProgramHistory(uint256 _programId) public view returns (History[] memory) {
+    return programHistories[_programId];
 }
 ```
+Returns **all program's history**.
