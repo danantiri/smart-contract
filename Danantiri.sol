@@ -102,30 +102,30 @@ contract Danantiri {
      * @param target The funding target.
      * @param pic The address designated as PIC.
      */
-    event CreatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
+    event ProgramCreated(uint256 indexed programId, string name, uint256 target, address pic);
     
     /**
      * @notice Emitted when an existing program is updated.
      * @param programId The ID of the updated program.
      * @param name The new name of the program.
-     * @param target The new funding target.
+     * @param desc The new description of the program.
      * @param pic The new PIC address.
      */
-    event UpdatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
+    event ProgramUpdated(uint256 indexed programId, string name, string desc, address pic);
     
     /**
      * @notice Emitted when tokens are sent to the contract as funding.
      * @param sender The address sending the tokens.
      * @param amount The amount of tokens sent.
      */
-    event SendFund(address indexed sender, uint256 amount);
+    event FundSent(address indexed sender, uint256 amount);
     
     /**
      * @notice Emitted when tokens are allocated to a program.
      * @param programId The ID of the program.
      * @param amount The amount of tokens allocated.
      */
-    event AllocateFund(uint256 indexed programId, uint256 amount);
+    event FundAllocated(uint256 indexed programId, uint256 amount);
     
     /**
      * @notice Emitted when the PIC withdraws allocated tokens.
@@ -134,7 +134,7 @@ contract Danantiri {
      * @param history The history of the withdrawal.
      * @param amount The amount of tokens withdrawn.
      */
-    event WithdrawFund(uint256 indexed programId, address indexed pic, string history, uint256 amount);
+    event FundWithdrawn(uint256 indexed programId, address indexed pic, string history, uint256 amount);
     
     // --------------------------------------------------
     // Modifiers
@@ -172,7 +172,7 @@ contract Danantiri {
     }
     
     // --------------------------------------------------
-    // Public / External Functions
+    // External Functions
     // --------------------------------------------------
     
     /**
@@ -189,7 +189,7 @@ contract Danantiri {
         string calldata _desc,
         address _pic
     )
-        public
+        external
         onlyAdmin
     {
         require(bytes(_name).length > 0, "Program name cannot be empty");
@@ -209,51 +209,7 @@ contract Danantiri {
         });
 
         programs.push(newProgram);
-        emit CreatedProgram(newId, _name, _target, _pic);
-    }
-    
-    /**
-     * @notice Retrieves all programs that are currently registered.
-     * @return An array of programs with status REGISTERED.
-     */
-    function getRegisteredProgram() public view returns (Program[] memory) {
-        uint256 count;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.REGISTERED) {
-                count++;
-            }
-        }
-        Program[] memory registeredPrograms = new Program[](count);
-        uint256 index;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.REGISTERED) {
-                registeredPrograms[index] = programs[i];
-                index++;
-            }
-        }
-        return registeredPrograms;
-    }
-    
-    /**
-     * @notice Retrieves all programs that are allocated.
-     * @return An array of programs with status ALLOCATED.
-     */
-    function getAllocatedProgram() public view returns (Program[] memory) {
-        uint256 count;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.ALLOCATED) {
-                count++;
-            }
-        }
-        Program[] memory allocatedPrograms = new Program[](count);
-        uint256 index;
-        for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.ALLOCATED) {
-                allocatedPrograms[index] = programs[i];
-                index++;
-            }
-        }
-        return allocatedPrograms;
+        emit ProgramCreated(newId, _name, _target, _pic);
     }
     
     /**
@@ -261,33 +217,29 @@ contract Danantiri {
      * @dev Validates inputs and ensures the program exists.
      * @param _programId The ID of the program to update.
      * @param _name The new name of the program.
-     * @param _target The new funding target.
      * @param _desc The new description.
      * @param _pic The new PIC's address.
      */
     function updateProgram(
         uint256 _programId,
         string calldata _name,
-        uint256 _target,
         string calldata _desc,
         address _pic
     )
-        public
+        external
         onlyAdmin
     {
         require(programs[_programId].status == ProgramStatus.REGISTERED, "Program is not registered");
         require(bytes(_name).length > 0, "Program name cannot be empty");
-        require(_target > 0, "Target must be greater than zero");
         require(bytes(_desc).length > 0, "Description cannot be empty");
         require(_pic != address(0), "PIC address cannot be zero");
 
         Program storage program = programs[_programId];
         program.name = _name;
-        program.target = _target;
         program.desc = _desc;
         program.pic = _pic;
 
-        emit UpdatedProgram(_programId, _name, _target, _pic);
+        emit ProgramUpdated(_programId, _name, _desc, _pic);
     }
     
     /**
@@ -295,11 +247,11 @@ contract Danantiri {
      * @dev Requires the sender to have approved this contract to spend tokens on their behalf.
      * @param amount The amount of tokens to send.
      */
-    function sendFund(uint256 amount) public {
+    function sendFund(uint256 amount) external {
         require(amount > 0, "Amount must be greater than zero");
         require(idrxToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
 
-        emit SendFund(msg.sender, amount);
+        emit FundSent(msg.sender, amount);
     }
     
     /**
@@ -307,19 +259,19 @@ contract Danantiri {
      * @dev Checks that allocation does not exceed the program's target or available tokens. (allocation = target)
      * @param _programId The ID of the program.
      */
-    function allocateFund(uint256 _programId) public onlyAdmin {
+    function allocateFund(uint256 _programId) external onlyAdmin {
         Program storage program = programs[_programId];
         require(program.status == ProgramStatus.REGISTERED, "Program is not registered");
 
         // Calculate available tokens (contract balance minus tokens already allocated)
         uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
-        require(available == program.target, "Allocation must be equal to program target");
+        require(available >= program.target, "Allocation must be equal to program target");
 
         program.allocated += program.target;
         totalAllocated += program.target;
         program.status = ProgramStatus.ALLOCATED;
 
-        emit AllocateFund(_programId, program.target);
+        emit FundAllocated(_programId, program.target);
     }
     
     /**
@@ -329,7 +281,7 @@ contract Danantiri {
      * @param _history The history of the withdrawal.
      * @param _amount The amount of tokens to withdraw.
      */
-    function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) public onlyPIC(_programId) {
+    function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) external onlyPIC(_programId) {
         Program storage program = programs[_programId];
         require(program.status == ProgramStatus.ALLOCATED, "Program is not allocated");
         require(bytes(_history).length > 0, "History cannot be empty");
@@ -349,7 +301,15 @@ contract Danantiri {
 
         require(idrxToken.transfer(msg.sender, _amount), "Token transfer failed");
 
-        emit WithdrawFund(_programId, msg.sender, _history, _amount);
+        emit FundWithdrawn(_programId, msg.sender, _history, _amount);
+    }
+    
+    /**
+     * @notice Retrieves all programs.
+     * @return An array of programs.
+     */
+    function getAllProgram() external view returns (Program[] memory) {
+        return programs;
     }
 
     /**
@@ -357,7 +317,7 @@ contract Danantiri {
      * @param _programId The ID of the program.
      * @return An array of history entries.
      */
-    function getProgramHistory(uint256 _programId) public view returns (History[] memory) {
+    function getProgramHistory(uint256 _programId) external view returns (History[] memory) {
         return programHistories[_programId];
     }
 }

@@ -46,7 +46,6 @@ contract Danantiri {
         address pic;
         ProgramStatus status;
         uint256 allocated;
-        string[] histories;
     }
 
     struct History {
@@ -84,11 +83,11 @@ mapping(uint256 => History[]) public programHistories;
 ### 📜 Events
 
 ```solidity
-event CreatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
-event UpdatedProgram(uint256 indexed programId, string name, uint256 target, address pic);
-event SendFund(address indexed sender, uint256 amount);
-event AllocateFund(uint256 indexed programId, uint256 amount);
-event WithdrawFund(uint256 indexed programId, address indexed pic, string history, uint256 amount);
+event ProgramCreated(uint256 indexed programId, string name, uint256 target, address pic);
+event ProgramUpdated(uint256 indexed programId, string name, string desc, address pic);
+event FundSent(address indexed sender, uint256 amount);
+event FundAllocated(uint256 indexed programId, uint256 amount);
+event FundWithdrawn(uint256 indexed programId, address indexed pic, string history, uint256 amount);
 ```
 Events will be used to communicate with external application
 
@@ -98,7 +97,7 @@ Events will be used to communicate with external application
 
 ```solidity
 modifier onlyAdmin() {
-    require(isAdmin(msg.sender), "Only admin can call this function");
+    require(msg.sender == owner, "Only admin can call this function");
     _;
 }
 ```
@@ -136,7 +135,7 @@ function createProgram(
     string calldata _desc,
     address _pic
 )
-    public
+    external
     onlyAdmin
 {
     require(bytes(_name).length > 0, "Program name cannot be empty");
@@ -156,7 +155,7 @@ function createProgram(
     });
 
     programs.push(newProgram);
-    emit CreatedProgram(newId, _name, _target, _pic);
+    emit ProgramCreated(newId, _name, _target, _pic);
 }
 ```
 
@@ -168,26 +167,23 @@ Admins can create programs that will be funded using the funds in Danantiri. All
 function updateProgram(
     uint256 _programId,
     string calldata _name,
-    uint256 _target,
     string calldata _desc,
     address _pic
 )
-    public
+    external
     onlyAdmin
 {
     require(programs[_programId].status == ProgramStatus.REGISTERED, "Program is not registered");
     require(bytes(_name).length > 0, "Program name cannot be empty");
-    require(_target > 0, "Target must be greater than zero");
     require(bytes(_desc).length > 0, "Description cannot be empty");
     require(_pic != address(0), "PIC address cannot be zero");
 
     Program storage program = programs[_programId];
     program.name = _name;
-    program.target = _target;
     program.desc = _desc;
     program.pic = _pic;
 
-    emit UpdatedProgram(_programId, _name, _target, _pic);
+    emit ProgramUpdated(_programId, _name, _desc, _pic);
 }
 ```
 
@@ -196,11 +192,11 @@ If the program's information or financial goal is no longer valid, admins can up
 #### 3️⃣ Depositing Funds
 
 ```solidity
-function sendFund(uint256 amount) public {
+function sendFund(uint256 amount) external {
     require(amount > 0, "Amount must be greater than zero");
     require(idrxToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
 
-    emit SendFund(msg.sender, amount);
+    emit FundSent(msg.sender, amount);
 }
 ```
 
@@ -209,19 +205,19 @@ Allows users to **contribute IDRX tokens** to the contract.
 #### 4️⃣ Allocating Funds to a Program
 
 ```solidity
-function allocateFund(uint256 _programId) public onlyAdmin {
+function allocateFund(uint256 _programId) external onlyAdmin {
     Program storage program = programs[_programId];
     require(program.status == ProgramStatus.REGISTERED, "Program is not registered");
 
     // Calculate available tokens (contract balance minus tokens already allocated)
     uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
-    require(available == program.target, "Allocation must be equal to program target");
+    require(available >= program.target, "Allocation must be equal to program target");
 
     program.allocated += program.target;
     totalAllocated += program.target;
     program.status = ProgramStatus.ALLOCATED;
 
-    emit AllocateFund(_programId, program.target);
+    emit FundAllocated(_programId, program.target);
 }
 ```
 
@@ -230,7 +226,7 @@ Admin can transfer funds **from contract balance** to a **specific program** whi
 #### 5️⃣ Withdrawing Funds (For PICs)
 
 ```solidity
-function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) public onlyPIC(_programId) {
+function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) external onlyPIC(_programId) {
     Program storage program = programs[_programId];
     require(program.status == ProgramStatus.ALLOCATED, "Program is not allocated");
     require(bytes(_history).length > 0, "History cannot be empty");
@@ -250,59 +246,26 @@ function withdrawFund(uint256 _programId, string calldata _history, uint256 _amo
 
     require(idrxToken.transfer(msg.sender, _amount), "Token transfer failed");
 
-    emit WithdrawFund(_programId, msg.sender, _history, _amount);
+    emit FundWithdrawn(_programId, msg.sender, _history, _amount);
 }
+```
 
 Allows **designated PICs** to withdraw **allocated funds**.
 
 #### 6️⃣ Retrieving Program Data
 
-To ensure transparency in fund usage, we will implement functions that allow the public to access and view all registered and allocated programs.
+To ensure transparency in fund usage, we will implement functions that allow the external to access and view all registered and allocated programs.
+
 
 ```solidity
-function getRegisteredProgram() public view returns (Program[] memory) {
-    uint256 count;
-    for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.REGISTERED) {
-            count++;
-        }
-    }
-    Program[] memory registeredPrograms = new Program[](count);
-    uint256 index;
-    for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.REGISTERED) {
-            registeredPrograms[index] = programs[i];
-            index++;
-        }
-    }
-    return registeredPrograms;
+function getAllProgram() external view returns (Program[] memory) {
+    return programs;
 }
 ```
-Returns **all registered funding programs**.
+Returns **all programs**.
 
 ```solidity
-function getAllocatedProgram() public view returns (Program[] memory) {
-    uint256 count;
-    for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.ALLOCATED) {
-            count++;
-        }
-    }
-    Program[] memory allocatedPrograms = new Program[](count);
-    uint256 index;
-    for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.ALLOCATED) {
-            allocatedPrograms[index] = programs[i];
-            index++;
-        }
-    }
-    return allocatedPrograms;
-}
-```
-Returns **all allocated programs**.
-
-```solidity
-function getProgramHistory(uint256 _programId) public view returns (History[] memory) {
+function getProgramHistory(uint256 _programId) external view returns (History[] memory) {
     return programHistories[_programId];
 }
 ```
