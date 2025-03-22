@@ -10,10 +10,10 @@ Danantiri ensures that **all fund transactions are recorded on-chain**, making t
 
 - 📌 **`Create & manage funding programs`** with specific goals and descriptions.  
 - ✏️ **`Update program details`** including name, target amount, description, and PIC.  
-- 💰 **`Fund allocation`** for active programs.  
+- 💰 **`Fund allocation`** for registered programs.  
 - 💸 **`Send funds`** with IDRX tokens.  
 - 🔄 **`Withdraw funds`** securely by designated PIC.  
-- 📜 **`Retrieve program status`** (Active, Completed, or Inactive).  
+- 📜 **`Retrieve program status`** (INACTIVE, REGISTERED, or ALLOCATED).  
 - 🔍 **`Transparent blockchain record-keeping`** for public verification.  
 
 ---
@@ -36,7 +36,7 @@ interface IERC20 {
 
 ```solidity
 contract Danantiri {
-    enum ProgramStatus { Inactive, Active, Completed }
+    enum ProgramStatus { INACTIVE, REGISTERED, ALLOCATED }
 
     struct Program {
         uint256 id;
@@ -62,7 +62,7 @@ Programs are structured to ensure clear tracking with:
 - **`Name & Description`** 🏷️ – Provides transparency on program objectives.
 - **`Target Funding Amount`** 💲 – Defines the financial goal of the program.
 - **`Assigned PIC`** 👤 – Assign responsible individual for the program.
-- **`Status (Inactive, Active, Completed)`** 📡 – Tracks progress and ensures visibility.
+- **`Status (INACTIVE, REGISTERED, ALLOCATED)`** 📡 – Tracks progress and ensures visibility.
 - **`Allocated Funds`** 💰 – Displays the amount of funds committed to the program.
 
 ### 📜 Danantiri Contract State Variables
@@ -131,33 +131,33 @@ Constructor function is used to initialize the state variables of a smart contra
 
 ```solidity
 function createProgram(
-        string calldata _name,
-        uint256 _target,
-        string calldata _desc,
-        address _pic
-    )
-        public
-        onlyAdmin
-    {
-        require(bytes(_name).length > 0, "Program name cannot be empty");
-        require(_target > 0, "Target must be greater than zero");
-        require(bytes(_desc).length > 0, "Description cannot be empty");
-        require(_pic != address(0), "PIC address cannot be zero");
+    string calldata _name,
+    uint256 _target,
+    string calldata _desc,
+    address _pic
+)
+    public
+    onlyAdmin
+{
+    require(bytes(_name).length > 0, "Program name cannot be empty");
+    require(_target > 0, "Target must be greater than zero");
+    require(bytes(_desc).length > 0, "Description cannot be empty");
+    require(_pic != address(0), "PIC address cannot be zero");
 
-        uint256 newId = programs.length;
-        Program memory newProgram = Program({
-            id: newId,
-            name: _name,
-            target: _target,
-            desc: _desc,
-            pic: _pic,
-            status: ProgramStatus.Active,
-            allocated: 0
-        });
+    uint256 newId = programs.length;
+    Program memory newProgram = Program({
+        id: newId,
+        name: _name,
+        target: _target,
+        desc: _desc,
+        pic: _pic,
+        status: ProgramStatus.REGISTERED,
+        allocated: 0
+    });
 
-        programs.push(newProgram);
-        emit CreatedProgram(newId, _name, _target, _pic);
-    }
+    programs.push(newProgram);
+    emit CreatedProgram(newId, _name, _target, _pic);
+}
 ```
 
 Admins can create programs that will be funded using the funds in Danantiri. All programs will be publicly accessible to ensure transparency in fund utilization.
@@ -175,7 +175,7 @@ function updateProgram(
     public
     onlyAdmin
 {
-    require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
+    require(programs[_programId].status == ProgramStatus.REGISTERED, "Program is not registered");
     require(bytes(_name).length > 0, "Program name cannot be empty");
     require(_target > 0, "Target must be greater than zero");
     require(bytes(_desc).length > 0, "Description cannot be empty");
@@ -211,7 +211,7 @@ Allows users to **contribute IDRX tokens** to the contract.
 ```solidity
 function allocateFund(uint256 _programId) public onlyAdmin {
     Program storage program = programs[_programId];
-    require(program.status == ProgramStatus.Active, "Program is not active");
+    require(program.status == ProgramStatus.REGISTERED, "Program is not registered");
 
     // Calculate available tokens (contract balance minus tokens already allocated)
     uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
@@ -219,20 +219,20 @@ function allocateFund(uint256 _programId) public onlyAdmin {
 
     program.allocated += program.target;
     totalAllocated += program.target;
-    program.status = ProgramStatus.Completed;
+    program.status = ProgramStatus.ALLOCATED;
 
     emit AllocateFund(_programId, program.target);
 }
 ```
 
-Admin can transfer funds **from contract balance** to a **specific program** which will be funded. If the the program is full funded, then it will change the program status to **Completed**.
+Admin can transfer funds **from contract balance** to a **specific program** which will be funded. If the the program is full funded, then it will change the program status to **ALLOCATED**.
 
 #### 5️⃣ Withdrawing Funds (For PICs)
 
 ```solidity
 function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) public onlyPIC(_programId) {
     Program storage program = programs[_programId];
-    require(program.status == ProgramStatus.Completed, "Program is not completed");
+    require(program.status == ProgramStatus.ALLOCATED, "Program is not allocated");
     require(bytes(_history).length > 0, "History cannot be empty");
     require(_amount > 0, "Amount must be greater than zero");
     require(_amount <= program.allocated, "Amount to withdraw exceeds allocated fund");
@@ -257,49 +257,49 @@ Allows **designated PICs** to withdraw **allocated funds**.
 
 #### 6️⃣ Retrieving Program Data
 
-To ensure transparency in fund usage, we will implement functions that allow the public to access and view all active and completed programs.
+To ensure transparency in fund usage, we will implement functions that allow the public to access and view all registered and allocated programs.
 
 ```solidity
-function getActiveProgram() public view returns (Program[] memory) {
+function getRegisteredProgram() public view returns (Program[] memory) {
     uint256 count;
     for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.Active) {
+        if (programs[i].status == ProgramStatus.REGISTERED) {
             count++;
         }
     }
-    Program[] memory activePrograms = new Program[](count);
+    Program[] memory registeredPrograms = new Program[](count);
     uint256 index;
     for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.Active) {
-            activePrograms[index] = programs[i];
+        if (programs[i].status == ProgramStatus.REGISTERED) {
+            registeredPrograms[index] = programs[i];
             index++;
         }
     }
-    return activePrograms;
+    return registeredPrograms;
 }
 ```
-Returns **all active funding programs**.
+Returns **all registered funding programs**.
 
 ```solidity
-function getCompletedProgram() public view returns (Program[] memory) {
+function getAllocatedProgram() public view returns (Program[] memory) {
     uint256 count;
     for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.Completed) {
+        if (programs[i].status == ProgramStatus.ALLOCATED) {
             count++;
         }
     }
-    Program[] memory completedPrograms = new Program[](count);
+    Program[] memory allocatedPrograms = new Program[](count);
     uint256 index;
     for (uint256 i = 0; i < programs.length; i++) {
-        if (programs[i].status == ProgramStatus.Completed) {
-            completedPrograms[index] = programs[i];
+        if (programs[i].status == ProgramStatus.ALLOCATED) {
+            allocatedPrograms[index] = programs[i];
             index++;
         }
     }
-    return completedPrograms;
+    return allocatedPrograms;
 }
 ```
-Returns **all fully funded programs**.
+Returns **all allocated programs**.
 
 ```solidity
 function getProgramHistory(uint256 _programId) public view returns (History[] memory) {

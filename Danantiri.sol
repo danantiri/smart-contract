@@ -42,9 +42,9 @@ contract Danantiri {
     
     /**
      * @notice Represents the status of a program.
-     *         0 -> Inactive, 1 -> Active (partially funded), 2 -> Completed (fully funded)
+     *         0 -> INACTIVE, 1 -> REGISTERED (partially funded), 2 -> ALLOCATED (fully funded)
      */
-    enum ProgramStatus { Inactive, Active, Completed }
+    enum ProgramStatus { INACTIVE, REGISTERED, ALLOCATED }
     
     /**
      * @notice Struct representing a funding program.
@@ -204,7 +204,7 @@ contract Danantiri {
             target: _target,
             desc: _desc,
             pic: _pic,
-            status: ProgramStatus.Active,
+            status: ProgramStatus.REGISTERED,
             allocated: 0
         });
 
@@ -213,47 +213,47 @@ contract Danantiri {
     }
     
     /**
-     * @notice Retrieves all programs that are currently active.
-     * @return An array of programs with status Active.
+     * @notice Retrieves all programs that are currently registered.
+     * @return An array of programs with status REGISTERED.
      */
-    function getActiveProgram() public view returns (Program[] memory) {
+    function getRegisteredProgram() public view returns (Program[] memory) {
         uint256 count;
         for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Active) {
+            if (programs[i].status == ProgramStatus.REGISTERED) {
                 count++;
             }
         }
-        Program[] memory activePrograms = new Program[](count);
+        Program[] memory registeredPrograms = new Program[](count);
         uint256 index;
         for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Active) {
-                activePrograms[index] = programs[i];
+            if (programs[i].status == ProgramStatus.REGISTERED) {
+                registeredPrograms[index] = programs[i];
                 index++;
             }
         }
-        return activePrograms;
+        return registeredPrograms;
     }
     
     /**
-     * @notice Retrieves all programs that are completed.
-     * @return An array of programs with status Completed.
+     * @notice Retrieves all programs that are allocated.
+     * @return An array of programs with status ALLOCATED.
      */
-    function getCompletedProgram() public view returns (Program[] memory) {
+    function getAllocatedProgram() public view returns (Program[] memory) {
         uint256 count;
         for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Completed) {
+            if (programs[i].status == ProgramStatus.ALLOCATED) {
                 count++;
             }
         }
-        Program[] memory completedPrograms = new Program[](count);
+        Program[] memory allocatedPrograms = new Program[](count);
         uint256 index;
         for (uint256 i = 0; i < programs.length; i++) {
-            if (programs[i].status == ProgramStatus.Completed) {
-                completedPrograms[index] = programs[i];
+            if (programs[i].status == ProgramStatus.ALLOCATED) {
+                allocatedPrograms[index] = programs[i];
                 index++;
             }
         }
-        return completedPrograms;
+        return allocatedPrograms;
     }
     
     /**
@@ -275,7 +275,7 @@ contract Danantiri {
         public
         onlyAdmin
     {
-        require(programs[_programId].status == ProgramStatus.Active, "Program is not active");
+        require(programs[_programId].status == ProgramStatus.REGISTERED, "Program is not registered");
         require(bytes(_name).length > 0, "Program name cannot be empty");
         require(_target > 0, "Target must be greater than zero");
         require(bytes(_desc).length > 0, "Description cannot be empty");
@@ -309,7 +309,7 @@ contract Danantiri {
      */
     function allocateFund(uint256 _programId) public onlyAdmin {
         Program storage program = programs[_programId];
-        require(program.status == ProgramStatus.Active, "Program is not active");
+        require(program.status == ProgramStatus.REGISTERED, "Program is not registered");
 
         // Calculate available tokens (contract balance minus tokens already allocated)
         uint256 available = idrxToken.balanceOf(address(this)) - totalAllocated;
@@ -317,7 +317,7 @@ contract Danantiri {
 
         program.allocated += program.target;
         totalAllocated += program.target;
-        program.status = ProgramStatus.Completed;
+        program.status = ProgramStatus.ALLOCATED;
 
         emit AllocateFund(_programId, program.target);
     }
@@ -331,7 +331,7 @@ contract Danantiri {
      */
     function withdrawFund(uint256 _programId, string calldata _history, uint256 _amount) public onlyPIC(_programId) {
         Program storage program = programs[_programId];
-        require(program.status == ProgramStatus.Completed, "Program is not completed");
+        require(program.status == ProgramStatus.ALLOCATED, "Program is not allocated");
         require(bytes(_history).length > 0, "History cannot be empty");
         require(_amount > 0, "Amount must be greater than zero");
         require(_amount <= program.allocated, "Amount to withdraw exceeds allocated fund");
