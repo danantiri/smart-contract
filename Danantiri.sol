@@ -81,6 +81,9 @@ contract Danantiri {
     
     /// @notice Array of all programs.
     Program[] public programs;
+
+    /// @notice Total tokens managed by the contract.
+    uint256 public totalManagedFund;
     
     /// @notice Total tokens allocated across all programs.
     uint256 public totalAllocated;
@@ -250,6 +253,8 @@ contract Danantiri {
     function sendFund(uint256 amount) external {
         require(amount > 0, "Amount must be greater than zero");
         require(idrxToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+
+        totalManagedFund += amount;
 
         emit FundSent(msg.sender, amount);
     }

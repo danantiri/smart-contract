@@ -71,6 +71,7 @@ Let's define all the necessary variables required for the Danantiri smart contra
 ```solidity
 address public owner;
 Program[] public programs;
+uint256 public totalManagedFund;
 uint256 public totalAllocated;
 IERC20 public idrxToken;
 mapping(uint256 => History[]) public programHistories;
@@ -195,6 +196,8 @@ If the program's information or financial goal is no longer valid, admins can up
 function sendFund(uint256 amount) external {
     require(amount > 0, "Amount must be greater than zero");
     require(idrxToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+
+    totalManagedFund += amount;
 
     emit FundSent(msg.sender, amount);
 }
